@@ -96,6 +96,89 @@ Trust boundaries: source | CI | candidate registry | promotion | runtime subscri
 
 
 
+Exception workflow
+Request -> completeness check -> service owner context -> security/control review
+        -> authorized risk decision -> compensating controls + expiry + ticket
+        -> monitored exception -> renewal only with fresh evidence and re-approval
+Required: control/rule, affected repos/artifacts, reason, impact, exploitability,
+controls, accountable owner, approver, expiry, remediation plan.
+
+
+
+
+
+Architecture diagrams and technical defense
+Diagram 1 — Azure DevOps paved road
+TRUST A: SOURCE
+[Developer] -> [Git + branch protection]
+                    |
+                    | workload identity federation
+                    v
+TRUST B: BUILD SUBSCRIPTION
+[Ephemeral agent] -> [tests/scans/SBOM] -> [sign + provenance]
+                                                   |
+                                                   v
+TRUST C: ARTIFACT / EVIDENCE
+[ACR digest] + [versioned secured evidence storage]
+                                                   |
+                                  policy + approval
+                                                   v
+TRUST D: ENVIRONMENT SUBSCRIPTIONS
+[Staging AKS/Functions/Container Apps] -> [health gates]
+                    |
+                    v
+[Production AKS/Functions/Container Apps]
+                    |
+         [Azure Monitor alerts / rollback]
+                    |
+                    v
+TRUST E: SECURITY / AUDIT
+[Activity Logs] [Azure Policy] [Defender for Cloud] [Log Analytics]
+          -> centralized incident response
+Ingress: users -> workload-specific gateway/ingress; no public CI runner ingress.
+Egress: workloads/build agents -> approved endpoints; restrict where feasible.
+Failure domains: agent, registry, subscription, region/AZ, workload, control plane.
+Ownership: platform owns paved road; product teams own app, SLO, data changes, on-call.
+Diagram 2 — Azure DevSecOps supply chain
+TRUST A: SOURCE
+[100 repositories] -> [CI orchestration]
+                          |
+                          | federation -> Entra ID
+                          v
+TRUST B: ISOLATED BUILD
+[Ephemeral agent] -> [locked deps/tests/SAST/SCA/secret scan]
+       -> [SBOM + digest] -> [candidate ACR]
+                          |
+                          v
+TRUST C: TRUST / EVIDENCE
+[signature + provenance] <-> [approved Key Vault signing authority]
+[secured evidence: SBOM, scans, approvals, deployment events]
+                          |
+                  policy decision point
+                          v
+TRUST D: PROMOTION / RUNTIME
+[Staging] -> [protected prod approval] -> [Production AKS/Functions/apps]
+                                                |
+                                                v
+TRUST E: DETECTION / AUDIT
+[Activity Logs] [Azure Policy] [Defender for Cloud] [Azure Monitor]
+                   -> incident response / retention
+Architecture interpretation
+• Ingress is workload-specific: Application Gateway/Front Door or a suitable load balancer for HTTP services, AKS ingress for
+Kubernetes, and API Management/API Gateway patterns for APIs where appropriate. Do not expose CI agents or artifact stores
+publicly.
+• Restrict build-agent egress to source, package feeds, registry, and required endpoints; do not grant general access to production
+networks.
+• Failure domains include agent, build subscription, registry/region, environment subscription, availability zone, and control-plane
+dependency. Use retries/idempotency, multi-zone workload design where supported, backups, and tested recovery.
+• Data flow: source commit -> build/test/scan -> SBOM -> artifact digest -> signature/provenance -> promotion approval ->
+deployment -> runtime telemetry and rollback evidence
+
+
+
+
+
+
 
 
 
